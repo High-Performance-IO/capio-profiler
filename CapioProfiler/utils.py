@@ -1,6 +1,10 @@
 import copy
 from typing import Any
 import numpy as np
+from collections import deque
+from typing import List, Dict, Any
+
+from CapioProfiler.regex_extractors import extract_timestamp, extract_hook_name
 
 
 def process_capio_inner_methods(detail_stats: dict[Any, Any]) -> list[Any]:
@@ -50,12 +54,13 @@ def process_statistics(
     return clean_rows
 
 
-def format_event_output(drows: list[Any],
-                        event_kind_detail: str,
-                        rows: list[Any],
-                        event_kind: str,
-                        total_exec_time_sec: float,
-                        traced_pid: str) -> dict[
+def format_event_output(
+        events: list[Any],
+        detailed_events: list[Any],
+        event_kind: str,
+        total_exec_time_sec: float,
+        traced_pid: str
+) -> dict[
     str, int | str | float | dict[str, list[str] | list[Any]]]:
     _TEMPLATE_HEADERS = ["Events", "% over time", "Total seconds", "Average", "Std.dev",
                          "Variance"]
@@ -63,17 +68,58 @@ def format_event_output(drows: list[Any],
     rows_headers = copy.deepcopy(_TEMPLATE_HEADERS)
     rows_headers.insert(0, event_kind)
     rows_headers_detail = copy.deepcopy(_TEMPLATE_HEADERS)
-    rows_headers_detail.insert(0, event_kind_detail)
+    rows_headers_detail.insert(0, "__FUNCTION__")
     return {
         "pid": int(traced_pid),
         "name": "posix",
         "total_exec_time": total_exec_time_sec,
         "global": {
             "headers": rows_headers,
-            "data": rows,
+            "data": events,
         },
         "function": {
             "headers": rows_headers_detail,
-            "data": drows,
+            "data": detailed_events,
         }
     }
+
+
+def process_single_event(lines, stats, detail_stats, event_name):
+    # Ensure syscall in global stats
+    entry = stats.setdefault(event_name, {"event_count": 0, "total_time_ms": []})
+
+    # Extract timestamps from block
+    ts_begin = extract_timestamp(lines[1]) if len(lines) > 1 else None
+    ts_end = extract_timestamp(lines[-2]) if len(lines) > 2 else None
+
+    if ts_begin is None or ts_end is None:
+        return
+
+    elapsed = max(ts_end - ts_begin, 1)
+    entry["event_count"] += 1
+    entry["total_time_ms"].append(elapsed)
+
+    stack: deque[Dict[str, Any]] = deque()
+
+    for line in lines:
+        if "call(" in line:
+            hook = extract_hook_name(line)
+            t = extract_timestamp(line)
+            if hook and t is not None:
+                stack.append({"func": hook, "timestamp": t})
+
+        elif "returned" in line:
+            if not stack:
+                continue  # unmatched return, ignore
+
+            ret = stack.pop()
+            t = extract_timestamp(line)
+            if t is None:
+                continue
+
+            elapsed_inner = t - ret["timestamp"]
+            func = ret["func"]
+
+            d = detail_stats.setdefault(func, {"count": 0, "exec_time": []})
+            d["count"] += 1
+            d["exec_time"].append(elapsed_inner)
