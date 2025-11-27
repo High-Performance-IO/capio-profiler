@@ -111,6 +111,14 @@ def profile(path: str) -> Dict[str, Any]:
             np.mean(total_ms) / 1000.0,
         ])
 
+    clean_rows = [r for r in rows if len(r) >= 3]
+
+    if len(clean_rows) != len(rows):
+        print(f"[WARN] Skipped {len(rows) - len(clean_rows)} malformed rows in {path}")
+
+    clean_rows.sort(key=lambda r: r[2], reverse=True)
+    rows = clean_rows
+
     rows.sort(key=lambda r: r[2], reverse=True)
 
     # ---------------- FUNCTION CALL STATS ---------------- #
