@@ -8,7 +8,7 @@ name = "CapioProfiler"
 version = "0.1.0"
 description = "A simple CAPIO trace profiler that shows where CAPIO spends most of its time."
 authors = [
-    { name = "Your Name", email = "you@example.com" }
+    { name = "Marco Edoardo Santimaria", email = "marcoedoardo.santimaria@unito.it" }
 ]
 readme = "README.md"
 license = { text = "MIT" }
