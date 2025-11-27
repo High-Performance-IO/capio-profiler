@@ -1,8 +1,7 @@
 import copy
-from typing import Any
 import numpy as np
 from collections import deque
-from typing import List, Dict, Any
+from typing import Dict, Any
 
 from CapioProfiler.regex_extractors import extract_timestamp, extract_hook_name
 

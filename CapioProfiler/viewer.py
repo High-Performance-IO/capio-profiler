@@ -1,6 +1,6 @@
 from textual.app import App, ComposeResult
 from textual.widgets import Header, Footer, Static, Tabs, Tab, DataTable
-from textual.containers import Vertical, Horizontal
+from textual.containers import Vertical
 
 
 class TraceViewer(App):
@@ -86,7 +86,6 @@ class TraceViewer(App):
         for row in trace["global"]["data"]:
             global_table.add_row(*map(str, row))
 
-        # Make selection span entire row
         global_table.cursor_type = "row"
 
         # Populate Function table
@@ -96,6 +95,5 @@ class TraceViewer(App):
         for row in trace["function"]["data"]:
             function_table.add_row(*map(str, row))
 
-        # Make selection span entire row
         function_table.cursor_type = "row"
 

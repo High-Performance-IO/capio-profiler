@@ -21,7 +21,9 @@ def process_request_block(
     process_single_event(lines, request_stats, detail_stats, request_name)
 
 
-def profile(path: str) -> Dict[str, Any]:
+def profile(
+        path: str
+) -> dict[str, int | str | float | dict[str, list[str] | list[Any]]]:
     request_stats = {}
     detail_stats = {}
 

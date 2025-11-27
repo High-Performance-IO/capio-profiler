@@ -1,4 +1,3 @@
-from .regex_extractors import *
 from .utils import *
 
 
@@ -6,7 +5,7 @@ def process_syscall_block(
         lines: List[str],
         syscall_stats: Dict[str, Dict[str, int]],
         detail_stats: Dict[str, Dict[str, int]],
-) -> int:
+) -> None:
     """Process one syscall block (starts with '+', ends with '~')."""
 
     if not lines or not lines[0].startswith("+"):
@@ -25,8 +24,9 @@ def process_syscall_block(
     process_single_event(lines, syscall_stats, detail_stats, syscall_name)
 
 
-
-def profile(path: str):
+def profile(
+        path: str
+) -> dict[str, int | str | float | dict[str, list[str] | list[Any]]]:
     syscall_stats = {}
     detail_stats = {}
 
@@ -57,7 +57,7 @@ def profile(path: str):
 
     if global_begin_ts is None or global_end_ts is None:
         print("No valid timestamps found in file.")
-        return None
+        return {}
 
     total_exec_time_sec = (global_end_ts - global_begin_ts) / 1000.0
     traced_pid = path.split("_")[-1].split(".")[0]
