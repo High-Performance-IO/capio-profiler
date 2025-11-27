@@ -1,35 +1,18 @@
-import sys
-import re
+from .regex_extractors import *
 from collections import deque
 from typing import List, Dict, Any
-from tabulate import tabulate
-
-
-TIMESTAMP_RE = re.compile(r"at\[(\d+)\]")
-HOOK_RE = re.compile(r"at\[\d+]\[(.*?)\]")
-SYSCALL_TAG_RE = re.compile(r"^\+.*?\s(\w+)$")   # + <timestamp> <syscall>
-
-
-def extract_timestamp(line: str) -> int | None:
-    m = TIMESTAMP_RE.search(line)
-    return int(m.group(1)) if m else None
-
-
-def extract_hook_name(line: str) -> str | None:
-    m = HOOK_RE.search(line)
-    return m.group(1) if m else None
-
+import numpy as np
 
 
 def process_syscall_block(
-    lines: List[str],
-    syscall_stats: Dict[str, Dict[str, int]],
-    detail_stats: Dict[str, Dict[str, int]],
+        lines: List[str],
+        syscall_stats: Dict[str, Dict[str, int]],
+        detail_stats: Dict[str, Dict[str, int]],
 ) -> int:
     """Process one syscall block (starts with '+', ends with '~')."""
 
     if not lines or not lines[0].startswith("+"):
-        return 0
+        return
 
     # Parse syscall name from the "+ ..." header
     parts = lines[0].strip().split()
@@ -42,18 +25,18 @@ def process_syscall_block(
             syscall_name = hook
 
     # Ensure syscall in global stats
-    entry = syscall_stats.setdefault(syscall_name, {"event_count": 0, "total_time_ms": 0})
+    entry = syscall_stats.setdefault(syscall_name, {"event_count": 0, "total_time_ms": []})
 
     # Extract timestamps from block
     ts_begin = extract_timestamp(lines[1]) if len(lines) > 1 else None
     ts_end = extract_timestamp(lines[-2]) if len(lines) > 2 else None
 
     if ts_begin is None or ts_end is None:
-        return 0
+        return
 
     elapsed = max(ts_end - ts_begin, 1)
     entry["event_count"] += 1
-    entry["total_time_ms"] += elapsed
+    entry["total_time_ms"].append(elapsed)
 
     stack: deque[Dict[str, Any]] = deque()
 
@@ -76,12 +59,11 @@ def process_syscall_block(
             elapsed_inner = t - ret["timestamp"]
             func = ret["func"]
 
-            d = detail_stats.setdefault(func, {"count": 0, "exec_time": 0})
+            d = detail_stats.setdefault(func, {"count": 0, "exec_time": []})
             d["count"] += 1
-            d["exec_time"] += elapsed_inner
+            d["exec_time"].append(elapsed_inner)
 
-    return ts_end
-
+    return
 
 
 def profile(path: str):
@@ -106,7 +88,7 @@ def profile(path: str):
                 block.append(line)
             else:
                 # End of block
-                end_ts = process_syscall_block(block, syscall_stats, detail_stats)
+                process_syscall_block(block, syscall_stats, detail_stats)
                 block = []
 
         # Handle final block if missing newline
@@ -130,31 +112,41 @@ def profile(path: str):
         rows.append([
             name,
             events,
-            total_ms / 1000.0,
-            (total_ms / events) / 1000.0,
-            (total_ms / max_time) * 100.0,
+            (np.sum(total_ms) / max_time),
+            np.sum(total_ms) / 1000.0,
+            np.average(total_ms) / 1000.0,
+            np.sqrt(np.mean((total_ms - np.mean(total_ms)) ** 2)) / 1000.0,
+            np.mean(total_ms) / 1000.0,
         ])
 
     rows.sort(key=lambda r: r[2], reverse=True)
 
-    print(f"Total execution time: {total_exec_time_sec:.6f} Seconds")
-
-    print("\n=== GLOBAL SYSCALL STATISTICS ===")
-    print(tabulate(
-        rows,
-        headers=["SYSCALL", "Events", "Total (Sec.)", "Avg Time (Sec.)", "% of Max"],
-        tablefmt="github",
-    ))
-
-
-    print("\n=== DETAILED INTERNAL FUNCTION STATS ===")
-
     drows = []
-    for func, info in sorted(detail_stats.items(), key=lambda kv: kv[1]["exec_time"], reverse=True):
-        drows.append([func, info["count"], info["exec_time"] / 1000.0])
+    for name, info in sorted(detail_stats.items(), key=lambda kv: np.sum(kv[1]["exec_time"]), reverse=True):
+        events = info["count"]
+        total_ms = info["exec_time"]
+        drows.append([
+            name,
+            events,
+            np.sum(total_ms) / 1000.0,
+            np.average(total_ms) / 1000.0,
+            np.sqrt(np.mean((total_ms - np.mean(total_ms)) ** 2)),
+            np.mean(total_ms) / 1000.0,
+        ])
 
-    print(tabulate(
-        drows,
-        headers=["Function", "Count", "Total Time (s)"],
-        tablefmt="github",
-    ))
+    traced_pid = path.split("_")[-1]
+    traced_pid = traced_pid.split(".")[0]
+
+    return {
+        "pid": int(traced_pid),
+        "name": "posix",
+        "total_exec_time": total_exec_time_sec,
+        "global": {
+            "headers": ["SYSCALL", "Events", "%", "Total seconds", "Average", "Std.dev", "Variance"],
+            "data": rows,
+        },
+        "function": {
+            "headers": ["__FUNCTION__", "Events", "Total seconds", "Average", "Std.dev", "Variance"],
+            "data": drows,
+        }
+    }
