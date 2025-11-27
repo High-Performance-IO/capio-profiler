@@ -1,8 +1,8 @@
-
 from .regex_extractors import *
 from collections import deque
 from typing import List, Dict, Any
-import numpy as np
+from .utils import process_capio_inner_methods, format_event_output, process_statistics
+
 
 def process_request_block(
         lines: List[str],
@@ -55,7 +55,7 @@ def process_request_block(
             d["count"] += 1
             d["exec_time"].append(elapsed_inner)
 
-# ---------------- Main Profiler ---------------- #
+
 def profile(path: str) -> Dict[str, Any]:
     request_stats = {}
     detail_stats = {}
@@ -84,7 +84,6 @@ def profile(path: str) -> Dict[str, Any]:
                     process_request_block(block, request_stats, detail_stats)
                     block = []
 
-        # Handle final block if missing newline
         if block:
             process_request_block(block, request_stats, detail_stats)
 
@@ -94,58 +93,11 @@ def profile(path: str) -> Dict[str, Any]:
 
     total_exec_time_sec = (global_end_ts - global_begin_ts) / 1000.0
 
-    # ---------------- GLOBAL REQUEST STATS ---------------- #
-    rows = []
-    max_time = max((np.sum(v["total_time_ms"]) for v in request_stats.values()), default=1)
-
-    for name, v in request_stats.items():
-        total_ms = v["total_time_ms"]
-        events = v["event_count"]
-        rows.append([
-            name,
-            events,
-            (np.sum(total_ms) / max_time),
-            np.sum(total_ms) / 1000.0,
-            np.average(total_ms) / 1000.0,
-            np.sqrt(np.mean((total_ms - np.mean(total_ms)) ** 2)),
-            np.mean(total_ms) / 1000.0,
-        ])
-
-    clean_rows = [r for r in rows if len(r) >= 3]
-
-    if len(clean_rows) != len(rows):
-        print(f"[WARN] Skipped {len(rows) - len(clean_rows)} malformed rows in {path}")
-
-    clean_rows.sort(key=lambda r: r[2], reverse=True)
-    rows = clean_rows
-
-    rows.sort(key=lambda r: r[2], reverse=True)
-
-    drows = []
-    for name, info in sorted(detail_stats.items(), key=lambda kv: np.sum(kv[1]["exec_time"]), reverse=True):
-        events = info["count"]
-        total_ms = info["exec_time"]
-        drows.append([
-            name,
-            events,
-            np.sum(total_ms) / 1000.0,
-            np.average(total_ms) / 1000.0,
-            np.sqrt(np.mean((total_ms - np.mean(total_ms)) ** 2)) / 1000.0,
-            np.mean(total_ms) / 1000.0,
-        ])
+    rows = process_statistics(request_stats)
+    drows = process_capio_inner_methods(detail_stats)
 
     traced_pid = path.split("_")[-1]
     traced_pid = traced_pid.split(".")[0]
-    return {
-        "pid" : int(traced_pid),
-        "name" : "server",
-        "total_exec_time": total_exec_time_sec,
-        "global": {
-            "headers": ["REQUEST", "Events", "% over time", "Total seconds", "Average", "Std.dev", "Variance"],
-            "data": rows,
-        },
-        "function": {
-            "headers": ["__FUNCTION__", "Events", "Total seconds", "Average", "Std.dev", "Variance"],
-            "data": drows,
-        }
-    }
+
+    return format_event_output(drows, "__FUNCTION__", rows, "REQUEST",
+                               total_exec_time_sec, traced_pid)

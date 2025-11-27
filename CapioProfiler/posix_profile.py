@@ -1,7 +1,7 @@
 from .regex_extractors import *
 from collections import deque
 from typing import List, Dict, Any
-import numpy as np
+from .utils import process_capio_inner_methods, process_statistics, format_event_output
 
 
 def process_syscall_block(
@@ -19,7 +19,7 @@ def process_syscall_block(
     syscall_name = parts[2] if len(parts) > 2 else "unknown"
 
     # If unknown: derive from first hook
-    if syscall_name == "unknown" and len(lines) > 1:
+    if syscall_name.lower() == "unknown" and len(lines) > 1:
         hook = extract_hook_name(lines[1])
         if hook:
             syscall_name = hook
@@ -97,63 +97,15 @@ def profile(path: str):
 
     if global_begin_ts is None or global_end_ts is None:
         print("No valid timestamps found in file.")
-        return
+        return None
 
     total_exec_time_sec = (global_end_ts - global_begin_ts) / 1000.0
 
-    # ---------------- GLOBAL SYSCALL STATS ---------------- #
-
-    rows = []
-    max_time = max((np.sum(v["total_time_ms"]) for v in syscall_stats.values()), default=1)
-
-    for name, v in syscall_stats.items():
-        total_ms = v["total_time_ms"]
-        events = v["event_count"]
-        reduced_total_ms = np.sum(total_ms)
-        rows.append([
-            name,
-            events,
-            reduced_total_ms / max_time,
-            reduced_total_ms / 1000.0,
-            reduced_total_ms / 1000.0,
-            np.sqrt(np.mean((total_ms - np.mean(total_ms)) ** 2)) / 1000.0,
-            np.mean(total_ms) / 1000.0,
-        ])
-
-    clean_rows = [r for r in rows if len(r) >= 3]
-
-    if len(clean_rows) != len(rows):
-        print(f"[WARN] Skipped {len(rows) - len(clean_rows)} malformed rows in {path}")
-
-    clean_rows.sort(key=lambda r: np.sum(r[2]), reverse=True)
-    rows = clean_rows
-
-    drows = []
-    for name, info in sorted(detail_stats.items(), key=lambda kv: np.sum(kv[1]["exec_time"]), reverse=True):
-        events = info["count"]
-        total_ms = info["exec_time"]
-        drows.append([
-            name,
-            events,
-            np.sum(total_ms) / 1000.0,
-            np.average(total_ms) / 1000.0,
-            np.sqrt(np.mean((total_ms - np.mean(total_ms)) ** 2)),
-            np.mean(total_ms) / 1000.0,
-        ])
+    rows = process_statistics(syscall_stats)
+    drows = process_capio_inner_methods(detail_stats)
 
     traced_pid = path.split("_")[-1]
     traced_pid = traced_pid.split(".")[0]
 
-    return {
-        "pid": int(traced_pid),
-        "name": "posix",
-        "total_exec_time": total_exec_time_sec,
-        "global": {
-            "headers": ["SYSCALL", "Events", "% over time", "Total seconds", "Average", "Std.dev", "Variance"],
-            "data": rows,
-        },
-        "function": {
-            "headers": ["__FUNCTION__", "Events", "Total seconds", "Average", "Std.dev", "Variance"],
-            "data": drows,
-        }
-    }
+    return format_event_output(drows,"__FUNCTION__", rows,"SYSCALL",
+                               total_exec_time_sec, traced_pid)
