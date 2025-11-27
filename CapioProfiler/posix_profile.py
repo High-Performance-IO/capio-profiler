@@ -104,17 +104,18 @@ def profile(path: str):
     # ---------------- GLOBAL SYSCALL STATS ---------------- #
 
     rows = []
-    max_time = max((v["total_time_ms"] for v in syscall_stats.values()), default=1)
+    max_time = max((np.sum(v["total_time_ms"]) for v in syscall_stats.values()), default=1)
 
     for name, v in syscall_stats.items():
         total_ms = v["total_time_ms"]
         events = v["event_count"]
+        reduced_total_ms = np.sum(total_ms)
         rows.append([
             name,
             events,
-            (np.sum(total_ms) / max_time),
-            np.sum(total_ms) / 1000.0,
-            np.average(total_ms) / 1000.0,
+            reduced_total_ms / max_time,
+            reduced_total_ms / 1000.0,
+            reduced_total_ms / 1000.0,
             np.sqrt(np.mean((total_ms - np.mean(total_ms)) ** 2)) / 1000.0,
             np.mean(total_ms) / 1000.0,
         ])
@@ -148,7 +149,7 @@ def profile(path: str):
         "name": "posix",
         "total_exec_time": total_exec_time_sec,
         "global": {
-            "headers": ["SYSCALL", "Events", "%", "Total seconds", "Average", "Std.dev", "Variance"],
+            "headers": ["SYSCALL", "Events", "% over time", "Total seconds", "Average", "Std.dev", "Variance"],
             "data": rows,
         },
         "function": {

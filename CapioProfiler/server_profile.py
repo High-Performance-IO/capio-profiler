@@ -141,7 +141,7 @@ def profile(path: str) -> Dict[str, Any]:
         "name" : "server",
         "total_exec_time": total_exec_time_sec,
         "global": {
-            "headers": ["REQUEST", "Events", "%", "Total seconds", "Average", "Std.dev", "Variance"],
+            "headers": ["REQUEST", "Events", "% over time", "Total seconds", "Average", "Std.dev", "Variance"],
             "data": rows,
         },
         "function": {
