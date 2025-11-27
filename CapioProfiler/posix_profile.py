@@ -124,7 +124,7 @@ def profile(path: str):
     if len(clean_rows) != len(rows):
         print(f"[WARN] Skipped {len(rows) - len(clean_rows)} malformed rows in {path}")
 
-    clean_rows.sort(key=lambda r: r[2], reverse=True)
+    clean_rows.sort(key=lambda r: np.sum(r[2]), reverse=True)
     rows = clean_rows
 
     drows = []

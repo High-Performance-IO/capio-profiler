@@ -121,7 +121,6 @@ def profile(path: str) -> Dict[str, Any]:
 
     rows.sort(key=lambda r: r[2], reverse=True)
 
-    # ---------------- FUNCTION CALL STATS ---------------- #
     drows = []
     for name, info in sorted(detail_stats.items(), key=lambda kv: np.sum(kv[1]["exec_time"]), reverse=True):
         events = info["count"]
